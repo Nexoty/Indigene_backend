@@ -23,8 +23,8 @@ def creer_alerte():
     try:
         data = request.json        
         sql = """
-        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation,image)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, image)
+        VALUES (%s, %s, %s, %s, %s, %s)
         """
         values = (
             data.get('uid'),
@@ -39,6 +39,7 @@ def creer_alerte():
         return jsonify({"success": True, 'message': 'Alerte créée', 'id': cursor.lastrowid})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
 
 # ----------------------
 # SELECT
@@ -83,6 +84,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
