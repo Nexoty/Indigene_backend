@@ -7,7 +7,7 @@ CORS(app)
 
 
 db = mysql.connector.connect(
-    host='srv1457.hstgr.io',      # ou '127.0.0.1'
+    host=' 127.0.0.1:3306',      # ou '127.0.0.1'
     port=3306,             # port par défaut MySQL (optionnel si port 3306)
     user='u119316410_nexoty',
     password='7|lQ*G&ZG@w3',
@@ -55,3 +55,4 @@ def effacer_alerte():
 if __name__ =='__main__':
 
     app.run(debug=True)
+
