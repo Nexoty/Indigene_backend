@@ -55,6 +55,31 @@ def creer_alerte():
 # ----------------------
 # SELECT
 # ----------------------
+@app.route('/tout', methods=['GET'])
+def recuperer_alertes():
+    uid = request.args.get('uid')  # Passé en paramètre GET
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT * FROM alerte")
+    alertes = cursor.fetchall()
+
+    import json
+    alertes_filtrees = [
+        a for a in alertes
+        if uid not in (json.loads(a['uids_confirms']) if a['uids_confirms'] else [])
+    ]
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": alertes_filtrees})
+
+
+# ----------------------
+# SELECT
+# ----------------------
 @app.route('/recuperer', methods=['GET'])
 def recuperer_alerte():
     try:
@@ -79,20 +104,42 @@ def recuperer_alerte():
 def mise_a_jour_alerte():
     try:
         data = request.json
+        alerte_id = data.get('id')
+        uid = data.get('uid')  # Nouvel identifiant utilisateur
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Incrémenter confirmation
-        sql = "UPDATE alerte SET confirmation = confirmation + 1 WHERE id = %s"
-        cursor.execute(sql, (data.get('id'),))
-        conn.commit()
+        # Récupérer la liste existante
+        cursor.execute("SELECT uids_confirms FROM alerte WHERE id = %s", (alerte_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            return jsonify({'success': False, 'message': "Alerte introuvable"}), 404
+
+        uids_list = result['uids_confirms'] or []
+        if isinstance(uids_list, str):
+            import json
+            uids_list = json.loads(uids_list)
+
+        # Ajouter l'UID s'il n'est pas déjà présent
+        if uid not in uids_list:
+            uids_list.append(uid)
+
+            cursor.execute("""
+                UPDATE alerte 
+                SET confirmation = confirmation + 1, uids_confirms = %s 
+                WHERE id = %s
+            """, (json.dumps(uids_list), alerte_id))
+            conn.commit()
 
         cursor.close()
         conn.close()
-        return jsonify({'success': True, 'message': "Alerte mise à jour"})
+
+        return jsonify({'success': True, 'message': "Alerte confirmée"})
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
-
 
 # ----------------------
 # DELETE
@@ -139,6 +186,7 @@ def recuperer_villes():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
