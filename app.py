@@ -5,15 +5,15 @@ import mysql.connector
 app = Flask(__name__)
 CORS(app)
 
-# Connexion à la base de données
-db = mysql.connector.connect(
-    host='srv1457.hstgr.io',   # ou '82.197.82.14'
-    port=3306,
-    user='u119316410_nexoty',
-    password='X2~NrF5iY3$c',
-    database='u119316410_indigene'
-)
-cursor = db.cursor(dictionary=True)
+# Fonction pour créer une connexion à chaque requête
+def get_db_connection():
+    return mysql.connector.connect(
+        host='srv1457.hstgr.io',
+        port=3306,
+        user='u119316410_nexoty',
+        password='X2~NrF5iY3$c',
+        database='u119316410_indigene'
+    )
 
 # ----------------------
 # INSERT
@@ -22,7 +22,9 @@ cursor = db.cursor(dictionary=True)
 def creer_alerte():
     try:
         data = request.json
-        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
         sql = """
         INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, image, adresse)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -39,23 +41,35 @@ def creer_alerte():
         )
         
         cursor.execute(sql, values)
-        db.commit()
+        conn.commit()
+        last_id = cursor.lastrowid
+
+        cursor.close()
+        conn.close()
         
-        return jsonify({"success": True, 'message': 'Alerte créée', 'id': cursor.lastrowid})
+        return jsonify({"success": True, 'message': 'Alerte créée', 'id': last_id})
     
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
-
 
 # ----------------------
 # SELECT
 # ----------------------
 @app.route('/recuperer', methods=['GET'])
 def recuperer_alerte():
-    cursor.execute("SELECT * FROM alerte")
-    resultats = cursor.fetchall()
-    return jsonify(resultats)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("SELECT * FROM alerte")
+        resultats = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+
+        return jsonify(resultats)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # ----------------------
 # UPDATE
@@ -64,10 +78,16 @@ def recuperer_alerte():
 def mise_a_jour_alerte():
     try:
         data = request.json
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
         confirmation = 1
         sql = "UPDATE alerte SET confirmation=%s WHERE id=%s"
         cursor.execute(sql, (confirmation, data.get('id')))
-        db.commit()
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
         return jsonify({'success': True, 'message': "Alerte mise à jour"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
@@ -79,9 +99,15 @@ def mise_a_jour_alerte():
 def effacer_alerte():
     try:
         data = request.json
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
         sql = "DELETE FROM alerte WHERE id=%s"
         cursor.execute(sql, (data.get('id'),))
-        db.commit()
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
         return jsonify({'success': True, 'message': "Le danger est éloigné"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
@@ -91,6 +117,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
