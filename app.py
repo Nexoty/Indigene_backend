@@ -97,10 +97,10 @@ def recuperer_alerte():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-#-----------------------
-# RECUPERER MESSAGE SYSTEME
-#-----------------------
-@app.route('/systeme',methods=['GET'])
+# ----------------------
+# SELECT APP UPDATE
+# ----------------------
+@app.route('/sysapp',methods=['GET'])
 def app_systeme():
     try:
         conn =get_db_connection()
@@ -113,7 +113,7 @@ def app_systeme():
         cursor.close()
         conn.close()
         
-        return jsonify({"success":True,"data":resultats})
+        return jsonify({"success":True,"data":resultats_app})
         
     except Exception as e:
         return jsonify({"success":False,"error":str(e)}),500
@@ -208,6 +208,7 @@ def recuperer_villes():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
