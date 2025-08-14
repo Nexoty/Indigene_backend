@@ -114,10 +114,31 @@ def effacer_alerte():
         return jsonify({"success": False, "error": str(e)})
 
 # ----------------------
+# Récupérer toutes les villes
+# ----------------------
+@app.route('/villes', methods=['GET'])
+def recuperer_villes():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("SELECT * FROM ville")
+        resultats = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "data": resultats})
+    
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ----------------------
 # Lancer le serveur
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
