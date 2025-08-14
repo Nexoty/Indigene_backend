@@ -23,8 +23,8 @@ def creer_alerte():
     try:
         data = request.json        
         sql = """
-        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, image)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, image,adresse)
+        VALUES (%s, %s, %s, %s, %i, %s,%s)
         """
         values = (
             data.get('uid'),
@@ -32,7 +32,8 @@ def creer_alerte():
             data.get('latitude'),
             data.get('longitude'),
             data.get('confirmation'),
-            data.get('image')
+            data.get('image'),
+            data.get('adresse')
         )
         cursor.execute(sql, values)
         db.commit()
@@ -84,6 +85,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
