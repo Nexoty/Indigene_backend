@@ -21,11 +21,13 @@ cursor = db.cursor(dictionary=True)
 @app.route('/inserer', methods=['POST'])
 def creer_alerte():
     try:
-        data = request.json        
+        data = request.json
+        
         sql = """
-        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, image,adresse)
-        VALUES (%s, %s, %s, %s, %i, %s,%s)
+        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, image, adresse)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
+        
         values = (
             data.get('uid'),
             data.get('type'),
@@ -35,11 +37,15 @@ def creer_alerte():
             data.get('image'),
             data.get('adresse')
         )
+        
         cursor.execute(sql, values)
         db.commit()
+        
         return jsonify({"success": True, 'message': 'Alerte créée', 'id': cursor.lastrowid})
+    
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 # ----------------------
@@ -85,6 +91,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
