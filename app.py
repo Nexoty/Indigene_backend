@@ -67,9 +67,10 @@ def recuperer_alerte():
         cursor.close()
         conn.close()
 
-        return jsonify(resultats)
+        return jsonify({"success": True, "data": resultats})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ----------------------
 # UPDATE
@@ -117,6 +118,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
