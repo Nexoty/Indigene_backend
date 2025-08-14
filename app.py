@@ -81,17 +81,18 @@ def mise_a_jour_alerte():
         data = request.json
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        
-        confirmation = 1
-        sql = "UPDATE alerte SET confirmation=%s WHERE id=%s"
-        cursor.execute(sql, (confirmation, data.get('id')))
+
+        # Incrémenter confirmation
+        sql = "UPDATE alerte SET confirmation = confirmation + 1 WHERE id = %s"
+        cursor.execute(sql, (data.get('id'),))
         conn.commit()
-        
+
         cursor.close()
         conn.close()
         return jsonify({'success': True, 'message': "Alerte mise à jour"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
 
 # ----------------------
 # DELETE
@@ -138,6 +139,7 @@ def recuperer_villes():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
