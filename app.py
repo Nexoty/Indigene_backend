@@ -113,7 +113,7 @@ def app_systeme():
         cursor.close()
         conn.close()
         
-        return jsonify({"success":True,"data":resultats_app})
+        return jsonify({"success":True,"data":resultats})
         
     except Exception as e:
         return jsonify({"success":False,"error":str(e)}),500
@@ -208,6 +208,7 @@ def recuperer_villes():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
