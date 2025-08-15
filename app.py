@@ -53,22 +53,43 @@ def creer_alerte():
         return jsonify({"success": False, "error": str(e)}), 500
 
 # ----------------------
+# SELECT APP UPDATE
+# ----------------------
+@app.route('/sysapp', methods=['GET'])
+def app_systeme():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        sql = "SELECT * FROM updates"
+        cursor.execute(sql)
+        resultats_app = cursor.fetchall() or []  # Toujours un tableau
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({"success": True, "data": resultats_app})
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ----------------------
 # SELECT
 # ----------------------
 @app.route('/tout', methods=['GET'])
 def recuperer_alertes():
     uid = request.args.get('uid')  # Passé en paramètre GET
-
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute("SELECT * FROM alerte")
-    alertes = cursor.fetchall()
+    alertes = cursor.fetchall() or []
 
     import json
     alertes_filtrees = [
         a for a in alertes
-        if uid not in (json.loads(a['uids_confirms']) if a['uids_confirms'] else [])
+        if uid not in (json.loads(a['uids_confirms']) if a.get('uids_confirms') else [])
     ]
 
     cursor.close()
@@ -87,7 +108,7 @@ def recuperer_alerte():
         cursor = conn.cursor(dictionary=True)
         
         cursor.execute("SELECT * FROM alerte")
-        resultats = cursor.fetchall()
+        resultats = cursor.fetchall() or []
         
         cursor.close()
         conn.close()
@@ -98,25 +119,44 @@ def recuperer_alerte():
 
 
 # ----------------------
-# SELECT APP UPDATE
+# Récupérer toutes les villes
 # ----------------------
-@app.route('/sysapp',methods=['GET'])
-def app_systeme():
+@app.route('/villes', methods=['GET'])
+def recuperer_villes():
     try:
-        conn =get_db_connection()
-        cursor=conn.cursor(dictionary=True)
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
         
-        sql="SELECT * FROM updates"
-        cursor.execute(sql)
-        resultats_app =cursor.fetchall()
+        cursor.execute("SELECT * FROM ville")
+        resultats = cursor.fetchall() or []
         
         cursor.close()
         conn.close()
-        
-        return jsonify({"success":True,"data":resultats_app})
-        
+
+        return jsonify({"success": True, "data": resultats})
+    
     except Exception as e:
-        return jsonify({"success":False,"error":str(e)}),500
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ----------------------
+# SELECT Services
+# ----------------------
+@app.route('/services', methods=['GET'])
+def recuperer_services():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("SELECT id, name, type, latitude, longitude FROM services")
+        resultats = cursor.fetchall() or []
+        
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "data": resultats})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ----------------------
@@ -183,51 +223,13 @@ def effacer_alerte():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-# ----------------------
-# Récupérer toutes les villes
-# ----------------------
-@app.route('/villes', methods=['GET'])
-def recuperer_villes():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        cursor.execute("SELECT * FROM ville")
-        resultats = cursor.fetchall()
-        
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "data": resultats})
-    
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-# ----------------------
-# SELECT Services
-# ----------------------
-@app.route('/services', methods=['GET'])
-def recuperer_services():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        cursor.execute("SELECT id, name, type, latitude, longitude FROM services")
-        resultats = cursor.fetchall()
-        
-        cursor.close()
-        conn.close()
-
-        return jsonify({"success": True, "data": resultats})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
 
 # ----------------------
 # Lancer le serveur
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
