@@ -108,12 +108,12 @@ def app_systeme():
         
         sql="SELECT * FROM updates"
         cursor.execute(sql)
-        resultats =cursor.fetchall()
+        resultats-app =cursor.fetchall()
         
         cursor.close()
         conn.close()
         
-        return jsonify({"success":True,"data":resultats})
+        return jsonify({"success":True,"data":resultats-app})
         
     except Exception as e:
         return jsonify({"success":False,"error":str(e)}),500
@@ -208,6 +208,7 @@ def recuperer_villes():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
