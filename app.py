@@ -159,49 +159,50 @@ def recuperer_services():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ----------------------
-# UPDATE
-# ----------------------
 @app.route('/update', methods=['POST'])
 def mise_a_jour_alerte():
     try:
         data = request.json
         alerte_id = data.get('id')
-        uid = data.get('uid')  # Nouvel identifiant utilisateur
+        confirm = data.get('confirmation')
+        uid = data.get('uid')
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Récupérer la liste existante
         cursor.execute("SELECT uids_confirms FROM alerte WHERE id = %s", (alerte_id,))
         result = cursor.fetchone()
-
         if not result:
             return jsonify({'success': False, 'message': "Alerte introuvable"}), 404
 
+        import json
         uids_list = result['uids_confirms'] or []
         if isinstance(uids_list, str):
-            import json
             uids_list = json.loads(uids_list)
 
-        # Ajouter l'UID s'il n'est pas déjà présent
         if uid not in uids_list:
             uids_list.append(uid)
-
-            cursor.execute("""
-                UPDATE alerte 
-                SET confirmation = confirmation + 1, uids_confirms = %s 
-                WHERE id = %s
-            """, (json.dumps(uids_list), alerte_id))
+            if confirm is True:
+                cursor.execute("""
+                    UPDATE alerte 
+                    SET confirmation = confirmation + 1, uids_confirms = %s 
+                    WHERE id = %s
+                """, (json.dumps(uids_list), alerte_id))
+            else:
+                cursor.execute("""
+                    UPDATE alerte 
+                    SET confirmation = confirmation - 1, uids_confirms = %s 
+                    WHERE id = %s
+                """, (json.dumps(uids_list), alerte_id))
             conn.commit()
 
         cursor.close()
         conn.close()
-
         return jsonify({'success': True, 'message': "Alerte confirmée"})
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
 
 # ----------------------
 # DELETE
@@ -229,6 +230,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
