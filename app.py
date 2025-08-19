@@ -53,13 +53,19 @@ def creer_alerte():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ----------------------
-# INSERT
-# ----------------------
 @app.route('/adresse', methods=['POST'])
-def creer_alerte():
+def creer_adresse():
+    conn = None
+    cursor = None
     try:
         data = request.json
+
+        # Vérification des champs obligatoires
+        required_fields = ['nom', 'numero', 'latitude', 'longitude', 'rue', 'email', 'categorie']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            return jsonify({"success": False, "error": f"Champs manquants: {', '.join(missing_fields)}"}), 400
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
@@ -67,7 +73,6 @@ def creer_alerte():
         INSERT INTO adresse (nom, numero, latitude, longitude, rue, email, categorie)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        
         values = (
             data.get('nom'),
             data.get('numero'),
@@ -77,16 +82,13 @@ def creer_alerte():
             data.get('email'),
             data.get('categorie')
         )
-        
+
         cursor.execute(sql, values)
         conn.commit()
         last_id = cursor.lastrowid
 
-        cursor.close()
-        conn.close()
-        
-        return jsonify({"success": True, 'message': 'Adresse créée', 'id': last_id})
-    
+        return jsonify({"success": True, "message": "Adresse créée", "id": last_id})
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -268,6 +270,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
