@@ -52,6 +52,44 @@ def creer_alerte():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ----------------------
+# INSERT
+# ----------------------
+@app.route('/adresse', methods=['POST'])
+def creer_alerte():
+    try:
+        data = request.json
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        INSERT INTO adresse (nom, numero, latitude, longitude, rue, email, categorie)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        values = (
+            data.get('nom'),
+            data.get('numero'),
+            data.get('latitude'),
+            data.get('longitude'),
+            data.get('rue'),
+            data.get('email'),
+            data.get('categorie')
+        )
+        
+        cursor.execute(sql, values)
+        conn.commit()
+        last_id = cursor.lastrowid
+
+        cursor.close()
+        conn.close()
+        
+        return jsonify({"success": True, 'message': 'Adresse créée', 'id': last_id})
+    
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # ----------------------
 # SELECT APP UPDATE
 # ----------------------
@@ -230,6 +268,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
