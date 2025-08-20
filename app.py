@@ -52,7 +52,9 @@ def creer_alerte():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-
+# ----------------------
+# INSERT ADRESSE
+# ----------------------
 @app.route('/adresse', methods=['POST'])
 def creer_adresse():
     conn = None
@@ -61,7 +63,7 @@ def creer_adresse():
         data = request.json
 
         # Vérification des champs obligatoires
-        required_fields = ['nom', 'numero', 'latitude', 'longitude', 'rue', 'email', 'categorie']
+        required_fields = ['nom', 'latitude', 'longitude', 'rue', 'email', 'categorie']
         missing_fields = [field for field in required_fields if not data.get(field)]
         if missing_fields:
             return jsonify({"success": False, "error": f"Champs manquants: {', '.join(missing_fields)}"}), 400
@@ -69,13 +71,19 @@ def creer_adresse():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
+        # Vérifier si l'email existe déjà
+        cursor.execute("SELECT id FROM adresse WHERE email = %s", (data.get('email'),))
+        email_existant = cursor.fetchone()
+        if email_existant:
+            return jsonify({"success": False, "error": "Email contient déjà une adresse"}), 409
+
+        # Insertion si email n'existe pas
         sql = """
-        INSERT INTO adresse (nom, numero, latitude, longitude, rue, email, categorie)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO adresse (nom, latitude, longitude, rue, email, categorie)
+        VALUES (%s, %s, %s, %s, %s, %s)
         """
         values = (
             data.get('nom'),
-            data.get('numero'),
             data.get('latitude'),
             data.get('longitude'),
             data.get('rue'),
@@ -101,7 +109,7 @@ def app_systeme():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        sql = "SELECT * FROM updates"
+        sql = "SELECT * FROM updates WHERE active = %s", (1,)"
         cursor.execute(sql)
         resultats_app = cursor.fetchall() or []  # Toujours un tableau
         
@@ -123,7 +131,7 @@ def recuperer_alertes():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("SELECT * FROM alerte")
+    cursor.execute("SELECT * FROM alerte WHERE active = %s", (1,))
     alertes = cursor.fetchall() or []
 
     import json
@@ -139,23 +147,29 @@ def recuperer_alertes():
 
 
 # ----------------------
-# SELECT
+# SELECT - Récupérer les alertes actives
 # ----------------------
 @app.route('/recuperer', methods=['GET'])
 def recuperer_alerte():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        
-        cursor.execute("SELECT * FROM alerte")
-        resultats = cursor.fetchall() or []
-        
+
+        # Sélection sécurisée
+        cursor.execute("SELECT * FROM alerte WHERE active = %s", (1,))
+        resultats = cursor.fetchall()
+
         cursor.close()
         conn.close()
 
+        if not resultats:
+            return jsonify({"success": False, "message": "Aucune alerte active trouvée"}), 404
+
         return jsonify({"success": True, "data": resultats})
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 # ----------------------
@@ -197,6 +211,36 @@ def recuperer_services():
         return jsonify({"success": True, "data": resultats})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+# ----------------------
+# Récupérer les données correspondant à l'adresse
+# ----------------------
+@app.route('/destination', methods=['GET'])
+def recuperer_destination():
+    try:
+        data = request.args.get('adresse')
+
+        if not data:
+            return jsonify({"success": False, "error": "Aucune adresse fournie"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Requête sécurisée
+        cursor.execute("SELECT * FROM adresse WHERE adresse = %s", (data,))
+        resultats_destinations = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        if not resultats_destinations:
+            return jsonify({"success": False, "message": "Adresse introuvable"}), 404
+
+        return jsonify({"success": True, "data": resultats_destinations})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 @app.route('/update', methods=['POST'])
@@ -270,6 +314,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
