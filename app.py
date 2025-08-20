@@ -133,7 +133,7 @@ def recuperer_alertes():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM alerte WHERE active = %s", (1,))
+        cursor.execute("SELECT * FROM alerte WHERE confirmation >= %s", (1,))
         alertes = cursor.fetchall() or []
 
         alertes_filtrees = [
@@ -157,7 +157,7 @@ def recuperer_alerte():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM alerte WHERE active = %s", (1,))
+        cursor.execute("SELECT * FROM alerte WHERE confirmation >= %s", (1,))
         resultats = cursor.fetchall()
         if not resultats:
             return jsonify({"success": False, "message": "Aucune alerte active trouvée"}), 404
@@ -304,6 +304,7 @@ def effacer_alerte():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
