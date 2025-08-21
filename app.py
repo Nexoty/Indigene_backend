@@ -351,8 +351,8 @@ def create_profile():
         phone = request.form.get('phone')
         photo_file = request.files.get('photo')
 
-        if not username or not phone or not photo_file:
-            return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
+        if not username or not phone:
+            return jsonify({"success": False, "error": "Nom et numéro requis"}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -363,9 +363,11 @@ def create_profile():
         if existing_profile:
             return jsonify({"success": False, "error": "Ce numéro existe déjà", "profile": existing_profile}), 400
 
-        # Upload sur Cloudinary
-        result = cloudinary.uploader.upload(photo_file)
-        photo_url = result['secure_url']
+        photo_url = None
+        if photo_file:
+            # Upload sur Cloudinary seulement si une image est envoyée
+            result = cloudinary.uploader.upload(photo_file)
+            photo_url = result['secure_url']
 
         # Insertion en DB
         cursor.execute(
@@ -375,7 +377,13 @@ def create_profile():
         conn.commit()
         profile_id = cursor.lastrowid
 
-        return jsonify({"success": True, "id": profile_id, "photo": photo_url, "username": username, "phone": phone})
+        return jsonify({
+            "success": True,
+            "id": profile_id,
+            "photo": photo_url,
+            "username": username,
+            "phone": phone
+        })
 
     except Exception as e:
         print("Erreur backend:", e)
@@ -383,6 +391,7 @@ def create_profile():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
 
 @app.route('/api/profile/friend', methods=['GET'])
 def check_profile_friend():
@@ -477,6 +486,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
