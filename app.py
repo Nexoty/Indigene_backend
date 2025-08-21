@@ -28,6 +28,26 @@ def get_db_connection():
         database='u119316410_indigene'
     )
 
+FUN_TEMPLATES = {
+    "Route inondée": [
+        "🌊 Gade dlo a! Si m’ te ou, m’ t ap pran bato wi!",
+        "🐊 Atansyon! Dlo sa ka gen kwo-kodil 😅"
+    ],
+    "Accident": [
+        "🚗💥 Pinga prese! Gen aksidan devan.",
+        "⛔ Tann ti moman, bagay yo pa dous la."
+    ],
+    "Tir violent": [
+        "🔫 Eyy, gen move zafè bal la! Evite zòn nan vit.",
+        "🏃🏾 Kouri lontan, tounen byento 😬"
+    ],
+}
+
+def make_fun_message(alert_type: str):
+    if alert_type in FUN_TEMPLATES:
+        return random.choice(FUN_TEMPLATES[alert_type])
+    return f"⚠️ {alert_type} rapòte! Pran prekosyon."
+
 # ----------------------
 # INSERT ALERTE
 # ----------------------
@@ -238,151 +258,116 @@ def recuperer_villes():
 
 
 # ----------------------
-# Créer un voyage
+# VERSION LEADS
 # ----------------------
-@app.route('/voyages', methods=['POST'])
-def create_voyage():
-    conn = None
-    cursor = None
+
+@app.post("/alerts")
+def create_alert():
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    a_type = data.get("type")
+    lat = data.get("lat")
+    lng = data.get("lng")
+
+    if not all([user_id, a_type, lat, lng]):
+        return jsonify({"success": False, "error": "Champs manquants"}), 400
+
+    msg = make_fun_message(a_type)
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("""INSERT INTO alerts (user_id, type, message, lat, lng)
+                   VALUES (%s,%s,%s,%s,%s)""", (user_id, a_type, msg, lat, lng))
+    alert_id = cur.lastrowid
+
+    # scoring simple : +1 point par alerte (exemple)
+    # (tu peux avoir une table user_scores si tu veux pousser)
+    return jsonify({"success": True, "alert_id": alert_id, "fun": msg})
+
+@app.get("/alerts/nearby")
+def alerts_nearby():
+    """Récupère alertes proches pour la carte / TTS."""
     try:
-        data = request.get_json()
+        lat = float(request.args.get("lat"))
+        lng = float(request.args.get("lng"))
+        radius_km = float(request.args.get("radius_km", 1.5))
+    except:
+        return jsonify({"success": False, "error": "Paramètres coords invalides"}), 400
 
-        end_address = data.get('end')
-        title = data.get('title')
-        participants = data.get('participants', [])  # tableau
-        organisateur_phone = data.get('organisateur_phone')  # numéro de l'organisateur
+    # Filtre temporel : dernières 6h
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    # approx naïve: 1 deg ~ 111km
+    deg = radius_km / 111.0
+    cur.execute("""
+      SELECT id, type, message, lat, lng, created_at
+      FROM alerts
+      WHERE lat BETWEEN %s AND %s
+        AND lng BETWEEN %s AND %s
+        AND created_at >= NOW() - INTERVAL 6 HOUR
+      ORDER BY created_at DESC
+      LIMIT 100
+    """, (lat-deg, lat+deg, lng-deg, lng+deg))
+    rows = cur.fetchall() or []
+    return jsonify({"success": True, "alerts": rows})
 
-        if not end_address or not title or not organisateur_phone:
-            return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
+@app.get("/leaderboard/weekly")
+def leaderboard_weekly():
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("""
+      SELECT u.id, u.username, COUNT(a.id) as alerts_count
+      FROM users u
+      JOIN alerts a ON a.user_id = u.id
+      WHERE a.created_at >= (CURDATE() - INTERVAL WEEKDAY(CURDATE()) DAY)
+      GROUP BY u.id
+      ORDER BY alerts_count DESC
+      LIMIT 10
+    """)
+    return jsonify({"success": True, "top": cur.fetchall()})
 
-        # Générer un lien unique pour le voyage
-        voyage_uuid = str(uuid.uuid4())
-        link = f"https://nexoty.com/voyage/{voyage_uuid}"
+@app.post("/alerts/vote")
+def vote_alert():
+    data = request.get_json() or {}
+    alert_id = data.get("alert_id")
+    user_id = data.get("user_id")
+    vote = data.get("vote", "useful")  # 'useful' or 'fake'
+    if not all([alert_id, user_id]):
+        return jsonify({"success": False, "error": "Champs manquants"}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Insérer le voyage avec participants et organisateur
-        import json
-        participant_json = json.dumps(participants)
-        sql = """
-        INSERT INTO voyage (title, participant, end_address, link, created_at, organisateur_phone)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        values = (title, participant_json, end_address, link, datetime.utcnow(), organisateur_phone)
-        cursor.execute(sql, values)
-        conn.commit()
-
-        voyage_id = cursor.lastrowid
-
-        return jsonify({
-            "success": True,
-            "id": voyage_id,
-            "link": link,
-            "message": "Voyage créé avec succès"
-        })
-
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    try:
+        cur.execute("""INSERT INTO alert_votes (alert_id, user_id, vote)
+                       VALUES (%s,%s,%s)
+                       ON DUPLICATE KEY UPDATE vote=VALUES(vote)""",
+                    (alert_id, user_id, vote))
+        return jsonify({"success": True})
     except Exception as e:
-        print("Erreur backend:", e)
         return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+
+def assign_badges():
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    # 1) Héros de la route: 10 alertes en 7 jours
+    cur.execute("""
+      SELECT user_id, COUNT(*) cnt FROM alerts
+      WHERE created_at >= NOW() - INTERVAL 7 DAY
+      GROUP BY user_id HAVING cnt >= 10
+    """)
+    winners = cur.fetchall()
+    cur.execute("SELECT id FROM badges WHERE code='HERO_7D'")
+    badge = cur.fetchone()
+    if badge:
+      for w in winners:
+        cur.execute("""INSERT IGNORE INTO user_badges (user_id, badge_id) VALUES (%s,%s)""",
+                    (w["user_id"], badge["id"]))
+
 
 
 # ----------------------
-# Récupérer les utilisateurs inscrits pour un voyage
+# Rester pour SESSION UTILISATEURS
 # ----------------------
-@app.route('/voyages', methods=['GET'])
-def get_user_voyages():
-    user_phone = request.args.get('phone')
-    if not user_phone:
-        return jsonify({"success": False, "error": "Numéro de téléphone requis"}), 400
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        # Récupérer voyages où le user.phone est dans le tableau participants
-        sql = """
-        SELECT v.id, v.title, v.end, v.color, v.participants
-        FROM voyage v
-        WHERE JSON_CONTAINS(v.participants, %s, '$')
-        """
-        # JSON_CONTAINS attend un JSON string, donc on passe le numéro de téléphone en string JSON
-        cursor.execute(sql, (f'"{user_phone}"',))
-        voyages = cursor.fetchall() or []
-
-        return jsonify({"success": True, "voyages": voyages})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-@app.route('/add', methods=['POST'])
-def add_friend():
-    data = request.get_json()
-    user_id = data.get('user_id')  # ID de l'utilisateur connecté
-    friend_phone = data.get('friend_phone')  # Numéro de téléphone de l'ami
-
-    if not user_id or not friend_phone:
-        return jsonify({"success": False, "error": "Champs requis"}), 400
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        # Vérifier que le profil de l'ami existe
-        cursor.execute("SELECT id FROM profile WHERE phone = %s", (friend_phone,))
-        friend = cursor.fetchone()
-        if not friend:
-            return jsonify({"success": False, "error": "Profil ami non trouvé"}), 404
-
-        friend_id = friend['id']
-
-        # Ajouter l'ami
-        cursor.execute(
-            "INSERT IGNORE INTO profile_friends (user_id, friend_id) VALUES (%s, %s)",
-            (user_id, friend_id)
-        )
-        conn.commit()
-
-        return jsonify({"success": True, "message": "Ami ajouté"})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-@app.route('/api/friends/<int:user_id>', methods=['GET'])
-def get_friends(user_id):
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT p.id, p.username, p.phone, p.photo
-        FROM profile p
-        INNER JOIN profile_friends pf ON pf.friend_id = p.id
-        WHERE pf.user_id = %s
-        """
-        cursor.execute(sql, (user_id,))
-        friends = cursor.fetchall() or []
-
-        return jsonify({"success": True, "friends": friends})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
 
 @app.route('/api/profile', methods=['POST'])
 def create_profile():
@@ -430,35 +415,6 @@ def create_profile():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-
-
-
-@app.route('/api/profile/friend', methods=['GET'])
-def check_profile_friend():
-    phone = request.args.get('phone')
-    if not phone:
-        return jsonify({"success": False, "error": "Numéro requis"}), 400
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        cursor.execute("SELECT id, username, phone, photo FROM profile WHERE phone = %s", (phone,))
-        profile = cursor.fetchone()
-
-        if profile:
-            return jsonify({"success": True, "data": profile})
-        else:
-            return jsonify({"success": True, "data": None})
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -533,6 +489,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
