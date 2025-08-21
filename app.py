@@ -7,7 +7,7 @@ from datetime import datetime
 import os
 import cloudinary
 import cloudinary.uploader
-
+import uuid
 
 app = Flask(__name__)
 CORS(app)
@@ -266,6 +266,82 @@ def mark_arrived(vid):
         if 'cur' in locals(): cur.close()
         if 'conn' in locals() and conn.is_connected(): conn.close()
 
+# ----------------------
+# Créer un voyage
+# ----------------------
+@app.route('/voyages', methods=['POST'])
+def create_voyage():
+    conn = None
+    cursor = None
+    try:
+        data = request.get_json()
+
+        start_address = data.get('start')
+        end_address = data.get('end')
+        title = data.get('title')
+
+        if not start_address or not end_address or not title:
+            return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
+
+        # Générer un lien unique pour le voyage
+        voyage_uuid = str(uuid.uuid4())
+        link = f"https://indigene.app/voyage/{voyage_uuid}"
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        INSERT INTO voyage (title, start_address, end_address, link, created_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        values = (title, start_address, end_address, link, datetime.utcnow())
+        cursor.execute(sql, values)
+        conn.commit()
+
+        voyage_id = cursor.lastrowid
+
+        return jsonify({
+            "success": True,
+            "id": voyage_id,
+            "link": link,
+            "message": "Voyage créé avec succès"
+        })
+
+    except Exception as e:
+        print("Erreur backend:", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+# ----------------------
+# Récupérer les utilisateurs inscrits pour un voyage
+# ----------------------
+@app.route('/voyages/<int:vid>/users', methods=['GET'])
+def get_voyage_users(vid):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT u.id, u.username, u.avatar_url
+        FROM users u
+        INNER JOIN voyage_users vu ON vu.user_id = u.id
+        WHERE vu.voyage_id = %s
+        """
+        cursor.execute(sql, (vid,))
+        users = cursor.fetchall() or []
+
+        return jsonify({"success": True, "users": users})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 # Route pour récupérer un profil par ID
 @app.route('/api/profile/<int:id>', methods=['GET'])
 def get_profile(id):
@@ -330,6 +406,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
