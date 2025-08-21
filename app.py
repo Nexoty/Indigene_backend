@@ -196,95 +196,6 @@ def recuperer_villes():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# ----------------------
-# Utilitaire: distance Haversine (mètres)
-# ----------------------
-def haversine_meters(lat1, lon1, lat2, lon2):
-    R = 6371000  # rayon Terre en m
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2.0)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2.0)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    return R * c
-
-# ----------------------
-# Correction pour update_voyage
-# ----------------------
-@app.route('/voyages/<int:vid>', methods=['PUT'])
-def update_voyage(vid):
-    data = request.get_json(force=True)
-    allowed = {'start_lat','start_lng','end_lat','end_lng','path','color','avatar_url','status','title'}
-    fields = []
-    values = []
-    for k,v in data.items():
-        if k in allowed:
-            if k == 'path':
-                values.append(json.dumps(v))
-            else:
-                values.append(v)
-            fields.append(f"{k} = %s")
-    if not fields:
-        return jsonify({"error":"no valid fields to update"}), 400
-    values.append(vid)
-    sql = f"UPDATE voyage SET {', '.join(fields)} WHERE id = %s"
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(sql, tuple(values))
-        conn.commit()
-        return jsonify({"ok": True, "updated": cur.rowcount})
-    except mysql.connector.Error as e:
-        print("DB error:", e)
-        abort(500, str(e))
-    finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals() and conn.is_connected(): conn.close()
-
-# ----------------------
-# Correction mark_arrived
-# ----------------------
-@app.route('/voyages/<int:vid>/arrived', methods=['POST'])
-def mark_arrived(vid):
-    payload = request.get_json(silent=True) or {}
-    lat = payload.get('lat')
-    lng = payload.get('lng')
-    ARRIVAL_THRESHOLD_M = float(os.getenv('ARRIVAL_THRESHOLD_M', 20.0))
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT id, start_lat, start_lng, end_lat, end_lng, status FROM voyage WHERE id = %s", (vid,))
-        r = cur.fetchone()
-        if not r:
-            return jsonify({"error":"not found"}), 404
-
-        if (r['start_lat'] == r['end_lat']) and (r['start_lng'] == r['end_lng']):
-            arrived = True
-            reason = "start_equals_end"
-        elif lat is not None and lng is not None:
-            dist = haversine_meters(lat, lng, r['end_lat'], r['end_lng'])
-            arrived = dist <= ARRIVAL_THRESHOLD_M
-            reason = f"distance={dist:.1f}m threshold={ARRIVAL_THRESHOLD_M}m"
-        else:
-            arrived = False
-            reason = "no_coords_provided_and_start_not_equal_end"
-
-        if not arrived:
-            return jsonify({"arrived": False, "reason": reason}), 200
-
-        now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-        cur.execute("UPDATE voyage SET status = %s, arrived_at = %s WHERE id = %s", ('arrived', now, vid))
-        conn.commit()
-        return jsonify({"arrived": True, "reason": reason, "updated_rows": cur.rowcount}), 200
-
-    except mysql.connector.Error as e:
-        print("DB error:", e)
-        abort(500, str(e))
-    finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals() and conn.is_connected(): conn.close()
 
 # ----------------------
 # Créer un voyage
@@ -296,25 +207,24 @@ def create_voyage():
     try:
         data = request.get_json()
 
-        start_address = data.get('start')
         end_address = data.get('end')
         title = data.get('title')
-
-        if not start_address or not end_address or not title:
+        participant = data.get('participant');
+        if not end_address or not title:
             return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
 
         # Générer un lien unique pour le voyage
         voyage_uuid = str(uuid.uuid4())
-        link = f"https://indigene.app/voyage/{voyage_uuid}"
+        link = f"https://nexoty.com/voyage/{voyage_uuid}"
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
         sql = """
-        INSERT INTO voyage (title, start_address, end_address, link, created_at)
+        INSERT INTO voyage (title, participant, end_address, link, created_at)
         VALUES (%s, %s, %s, %s, %s)
         """
-        values = (title, start_address, end_address, link, datetime.utcnow())
+        values = (title,  participant, end_address, link, datetime.utcnow())
         cursor.execute(sql, values)
         conn.commit()
 
@@ -337,21 +247,25 @@ def create_voyage():
 # ----------------------
 # Récupérer les utilisateurs inscrits pour un voyage
 # ----------------------
-@app.route('/voyages/<int:vid>/users', methods=['GET'])
-def get_voyage_users(vid):
+@app.route('/voyages/', methods=['GET'])
+def get_voyage_users():
     conn = None
     cursor = None
     try:
+        voyage_id = request.args.get('id')
+        if not voyage_id:
+            return jsonify({"success": False, "error": "ID du voyage requis"}), 400
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
         sql = """
         SELECT u.id, u.username, u.avatar_url
-        FROM users u
+        FROM profile u
         INNER JOIN voyage_users vu ON vu.user_id = u.id
         WHERE vu.voyage_id = %s
         """
-        cursor.execute(sql, (vid,))
+        cursor.execute(sql, (voyage_id,))
         users = cursor.fetchall() or []
 
         return jsonify({"success": True, "users": users})
@@ -363,12 +277,16 @@ def get_voyage_users(vid):
         if conn: conn.close()
 
 # Route pour récupérer un profil par ID
-@app.route('/api/profile/<int:id>', methods=['GET'])
-def get_profile(id):
+@app.route('/api/profile/', methods=['GET'])
+def get_profile():
     try:
+        profile_id = request.args.get('id')
+        if not profile_id:
+            return jsonify({"success": False, "error": "ID du profil requis"}), 400
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM profile WHERE id = %s", (id,))
+        cursor.execute("SELECT * FROM profile WHERE id = %s", (profile_id,))
         profile = cursor.fetchone()
         if not profile:
             return jsonify({"success": False, "message": "Profil non trouvé"}), 404
@@ -376,8 +294,8 @@ def get_profile(id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
-        cursor.close() if cursor else None
-        conn.close() if conn else None
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 @app.route('/api/profile', methods=['POST'])
 def create_profile():
@@ -426,6 +344,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
