@@ -177,6 +177,26 @@ def recuperer_alerte():
         if conn: conn.close()
 
 # ----------------------
+# Récupérer les services
+# ----------------------
+@app.route('/services', methods=['GET'])
+def recuperer_villes():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("SELECT * FROM services")
+        resultats = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "data": resultats})
+    
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ----------------------
 # Utilitaire: distance Haversine (mètres)
 # ----------------------
 def haversine_meters(lat1, lon1, lat2, lon2):
@@ -406,6 +426,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
