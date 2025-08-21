@@ -9,6 +9,11 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+cloudinary.config(
+    cloud_name='dg5fzqmtg',
+    api_key='511658453183448',
+    api_secret='**********'
+)
 # Fonction pour créer une connexion MySQL
 def get_db_connection():
     return mysql.connector.connect(
@@ -289,15 +294,11 @@ def create_profile():
         if not username or not phone or not photo_file:
             return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
 
-        # Enregistrer la photo
-        filename = secure_filename(photo_file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        photo_file.save(filepath)
+        # Upload sur Cloudinary
+        result = cloudinary.uploader.upload(photo_file)
+        photo_url = result['secure_url']
 
-        # On peut enregistrer le chemin relatif dans la DB
-        photo_url = f"/{UPLOAD_FOLDER}/{filename}"
-
-        # Insertion dans la DB
+        # Insertion en DB
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -307,9 +308,10 @@ def create_profile():
         conn.commit()
         profile_id = cursor.lastrowid
 
-        return jsonify({"success": True, "id": profile_id})
+        return jsonify({"success": True, "id": profile_id, "photo": photo_url})
 
     except Exception as e:
+        print("Erreur backend:", e)
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
         if cursor: cursor.close()
@@ -327,6 +329,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
