@@ -178,6 +178,45 @@ def recuperer_alerte():
         if conn: conn.close()
 
 # ----------------------
+# UPDATE CONFIRMATION
+# ----------------------
+@app.route('/update', methods=['POST'])
+def mise_a_jour_alerte():
+    try:
+        data = request.json
+        alerte_id = data.get('id')
+        confirmation = data.get('confirmation')  # true = +1, false = -1
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        if confirmation:  
+            # Incrémenter
+            sql = "UPDATE alerte SET confirmation = confirmation + 1 WHERE id = %s"
+            cursor.execute(sql, (alerte_id,))
+        else:  
+            # Décrémenter mais jamais en dessous de 0
+            sql = """
+                UPDATE alerte 
+                SET confirmation = CASE 
+                    WHEN confirmation > 0 THEN confirmation - 1 
+                    ELSE 0 
+                END
+                WHERE id = %s
+            """
+            cursor.execute(sql, (alerte_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'message': "Alerte mise à jour"})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+# ----------------------
 # Récupérer les services
 # ----------------------
 @app.route('/services', methods=['GET'])
@@ -494,6 +533,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
