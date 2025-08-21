@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify, abort,session
 from flask_cors import CORS
 import mysql.connector
 import json
@@ -10,6 +10,7 @@ import cloudinary.uploader
 import uuid
 
 app = Flask(__name__)
+app.secret_key = os.getenv("ewewbdshdssdghsdywewewywew")
 CORS(app)
 
 cloudinary.config(
@@ -347,9 +348,9 @@ def create_profile():
     conn = None
     cursor = None
     try:
-        username = request.form.get('username')
-        phone = request.form.get('phone')
-        photo_file = request.files.get('photo')
+        data = request.get_json()
+        username = data.get('username')
+        phone = data.get('phone')
 
         if not username or not phone:
             return jsonify({"success": False, "error": "Nom et numéro requis"}), 400
@@ -361,18 +362,16 @@ def create_profile():
         cursor.execute("SELECT * FROM profile WHERE phone = %s", (phone,))
         existing_profile = cursor.fetchone()
         if existing_profile:
-            return jsonify({"success": False, "error": "Ce numéro existe déjà", "profile": existing_profile}), 400
+            return jsonify({
+                "success": False,
+                "error": "Ce numéro existe déjà",
+                "profile": existing_profile
+            }), 400
 
-        photo_url = None
-        if photo_file:
-            # Upload sur Cloudinary seulement si une image est envoyée
-            result = cloudinary.uploader.upload(photo_file)
-            photo_url = result['secure_url']
-
-        # Insertion en DB
+        # Insertion simple en DB (sans photo)
         cursor.execute(
-            "INSERT INTO profile (username, phone, photo) VALUES (%s, %s, %s)",
-            (username, phone, photo_url)
+            "INSERT INTO profile (username, phone) VALUES (%s, %s)",
+            (username, phone)
         )
         conn.commit()
         profile_id = cursor.lastrowid
@@ -380,7 +379,6 @@ def create_profile():
         return jsonify({
             "success": True,
             "id": profile_id,
-            "photo": photo_url,
             "username": username,
             "phone": phone
         })
@@ -391,6 +389,7 @@ def create_profile():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
 
 
 @app.route('/api/profile/friend', methods=['GET'])
@@ -437,11 +436,32 @@ def login():
         if not user:
             return jsonify({"success": False, "error": "Utilisateur non trouvé"}), 404
 
-        # Enregistrer l'utilisateur dans la session
-        session['user_id'] = user['id']
-        session['username'] = user['username']
-        session['phone'] = user['phone']
-        session['photo'] = user['photo']
+        # Pas besoin de session, on renvoie directement l'utilisateur
+        return jsonify({"success": True, "user": user})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+    
+@app.route('/api/me', methods=['POST'])
+def me():
+    user_id = request.json.get("id")
+    if not user_id:
+        return jsonify({"success": False, "error": "ID requis"}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM profile WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+
+        if not user:
+            return jsonify({"success": False, "error": "Utilisateur introuvable"}), 404
 
         return jsonify({"success": True, "user": user})
 
@@ -450,21 +470,7 @@ def login():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-    
-@app.route('/api/me', methods=['GET'])
-def me():
-    if 'user_id' not in session:
-        return jsonify({"success": False, "error": "Non connecté"}), 401
 
-    return jsonify({
-        "success": True,
-        "user": {
-            "id": session['user_id'],
-            "username": session['username'],
-            "phone": session['phone'],
-            "photo": session['photo']
-        }
-    })
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -486,6 +492,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
