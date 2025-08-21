@@ -209,7 +209,7 @@ def create_voyage():
 
         end_address = data.get('end')
         title = data.get('title')
-        participant = data.get('participant');
+        participants = data.get('participants', [])  # tableau
         if not end_address or not title:
             return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
 
@@ -218,13 +218,17 @@ def create_voyage():
         link = f"https://nexoty.com/voyage/{voyage_uuid}"
 
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
 
+        # Insérer le voyage avec les participants stockés en JSON
         sql = """
         INSERT INTO voyage (title, participant, end_address, link, created_at)
         VALUES (%s, %s, %s, %s, %s)
         """
-        values = (title,  participant, end_address, link, datetime.utcnow())
+        # Convertir le tableau en chaîne JSON
+        import json
+        participant_json = json.dumps(participants)
+        values = (title, participant_json, end_address, link, datetime.utcnow())
         cursor.execute(sql, values)
         conn.commit()
 
@@ -247,7 +251,7 @@ def create_voyage():
 # ----------------------
 # Récupérer les utilisateurs inscrits pour un voyage
 # ----------------------
-@app.route('/voyages/', methods=['GET'])
+@app.route('/voyages/users', methods=['GET'])
 def get_voyage_users():
     conn = None
     cursor = None
@@ -344,6 +348,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
