@@ -1,12 +1,15 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
 import mysql.connector
 import json
+import math
+from datetime import datetime
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Fonction pour créer une connexion à chaque requête
+# Fonction pour créer une connexion MySQL
 def get_db_connection():
     return mysql.connector.connect(
         host='srv1457.hstgr.io',
@@ -37,7 +40,7 @@ def creer_alerte():
             data.get('type'),
             data.get('latitude'),
             data.get('longitude'),
-            data.get('confirmation'),
+            data.get('confirmation', 0),
             data.get('image'),
             data.get('adresse')
         )
@@ -64,7 +67,6 @@ def creer_adresse():
     try:
         data = request.json
 
-        # Vérification des champs obligatoires
         required_fields = ['nom', 'latitude', 'longitude', 'rue', 'email', 'categorie']
         missing_fields = [field for field in required_fields if not data.get(field)]
         if missing_fields:
@@ -73,12 +75,10 @@ def creer_adresse():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Vérifier si l'email existe déjà
         cursor.execute("SELECT id FROM adresse WHERE email = %s", (data.get('email'),))
         if cursor.fetchone():
             return jsonify({"success": False, "error": "Email contient déjà une adresse"}), 409
 
-        # Insertion
         sql = """
         INSERT INTO adresse (nom, latitude, longitude, rue, email, categorie)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -169,137 +169,8 @@ def recuperer_alerte():
         if conn: conn.close()
 
 # ----------------------
-# SELECT VILLES
+# Utilitaire: distance Haversine (mètres)
 # ----------------------
-@app.route('/villes', methods=['GET'])
-def recuperer_villes():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM ville")
-        resultats = cursor.fetchall()
-        return jsonify({"success": True, "data": resultats})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-# ----------------------
-# SELECT SERVICES
-# ----------------------
-@app.route('/services', methods=['GET'])
-def recuperer_services():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, name, type, latitude, longitude FROM services")
-        resultats = cursor.fetchall()
-        return jsonify({"success": True, "data": resultats})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-# ----------------------
-# SELECT DESTINATION PAR RUE
-# ----------------------
-@app.route('/destination', methods=['GET'])
-def recuperer_destination():
-    data = request.args.get('adresse')
-    conn = None
-    cursor = None
-    try:
-        if not data:
-            return jsonify({"success": False, "error": "Aucune adresse fournie"}), 400
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM adresse WHERE rue = %s", (data,))
-        resultats_destinations = cursor.fetchall()
-        if not resultats_destinations:
-            return jsonify({"success": False, "message": "Adresse introuvable"}), 404
-        return jsonify({"success": True, "data": resultats_destinations})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-# ----------------------
-# UPDATE ALERTE
-# ----------------------
-@app.route('/update', methods=['POST'])
-def mise_a_jour_alerte():
-    conn = None
-    cursor = None
-    try:
-        data = request.json
-        alerte_id = data.get('id')
-        confirm = data.get('confirmation')
-        uid = data.get('uid')
-
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT uids_confirms, confirmation FROM alerte WHERE id = %s", (alerte_id,))
-        result = cursor.fetchone()
-        if not result:
-            return jsonify({'success': False, 'message': "Alerte introuvable"}), 404
-
-        uids_list = result['uids_confirms'] or []
-        if isinstance(uids_list, str):
-            uids_list = json.loads(uids_list)
-
-        confirmation_value = result['confirmation'] or 0
-
-        if uid not in uids_list:
-            uids_list.append(uid)
-            if confirm is True:
-                cursor.execute("""
-                    UPDATE alerte 
-                    SET confirmation = confirmation + 1, uids_confirms = %s
-                    WHERE id = %s
-                """, (json.dumps(uids_list), alerte_id))
-            else:
-                cursor.execute("""
-                    UPDATE alerte 
-                    SET confirmation = GREATEST(confirmation - 1, 0), uids_confirms = %s
-                    WHERE id = %s
-                """, (json.dumps(uids_list), alerte_id))
-            conn.commit()
-
-        return jsonify({'success': True, 'message': "Alerte confirmée"})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-# ----------------------
-# DELETE ALERTE
-# ----------------------
-@app.route('/effacer', methods=['POST'])
-def effacer_alerte():
-    conn = None
-    cursor = None
-    try:
-        data = request.json
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("DELETE FROM alerte WHERE id=%s", (data.get('id'),))
-        conn.commit()
-        return jsonify({'success': True, 'message': "Le danger est éloigné"})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-# Utilitaire : distance haversine (mètres)
 def haversine_meters(lat1, lon1, lat2, lon2):
     R = 6371000  # rayon Terre en m
     phi1 = math.radians(lat1)
@@ -310,45 +181,9 @@ def haversine_meters(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
-# -------- Routes --------
-
-# GET /voyages => liste de voyages (optionnel: status filter)
-@app.route('/voyages', methods=['GET'])
-def list_voyages():
-    status = request.args.get('status')  # ex: ?status=in_progress
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor(dictionary=True)
-        sql = "SELECT id, user_id, title, start_lat, start_lng, end_lat, end_lng, path, color, avatar_url, status, started_at, arrived_at FROM voyage"
-        if status:
-            sql += " WHERE status = %s"
-            cur.execute(sql, (status,))
-        else:
-            cur.execute(sql)
-        rows = cur.fetchall()
-        # parse json field path
-        for r in rows:
-            if r.get('path') is None:
-                r['path'] = []
-            else:
-                try:
-                    # MySQL may return dict for JSON column or string
-                    if isinstance(r['path'], (bytes, bytearray)):
-                        r['path'] = json.loads(r['path'].decode('utf-8'))
-                    elif isinstance(r['path'], str):
-                        r['path'] = json.loads(r['path'])
-                except Exception:
-                    # fallback leave as-is
-                    pass
-        return jsonify(rows)
-    except Error as e:
-        print("DB error:", e)
-        abort(500, str(e))
-    finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals() and conn.is_connected(): conn.close()
-
-# PUT /voyages/<id> => update fields (start/end/path/status)
+# ----------------------
+# Correction pour update_voyage
+# ----------------------
 @app.route('/voyages/<int:vid>', methods=['PUT'])
 def update_voyage(vid):
     data = request.get_json(force=True)
@@ -367,27 +202,27 @@ def update_voyage(vid):
     values.append(vid)
     sql = f"UPDATE voyage SET {', '.join(fields)} WHERE id = %s"
     try:
-         conn = get_db_connection()
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(sql, tuple(values))
         conn.commit()
         return jsonify({"ok": True, "updated": cur.rowcount})
-    except Error as e:
+    except mysql.connector.Error as e:
         print("DB error:", e)
         abort(500, str(e))
     finally:
         if 'cur' in locals(): cur.close()
         if 'conn' in locals() and conn.is_connected(): conn.close()
 
-# POST /voyages/<id>/arrived
-# On peut appeler avec body { "lat": .., "lng": .. } (optionnel) ou le backend vérifiera si start==end selon la demande
+# ----------------------
+# Correction mark_arrived
+# ----------------------
 @app.route('/voyages/<int:vid>/arrived', methods=['POST'])
 def mark_arrived(vid):
     payload = request.get_json(silent=True) or {}
-    lat = payload.get('lat')   # position du client (optionnel)
+    lat = payload.get('lat')
     lng = payload.get('lng')
-    # Seuil d'arrivée (mètres)
-    ARRIVAL_THRESHOLD_M = float(os.getenv('ARRIVAL_THRESHOLD_M', 20.0))  # 20 m par défaut
+    ARRIVAL_THRESHOLD_M = float(os.getenv('ARRIVAL_THRESHOLD_M', 20.0))
 
     try:
         conn = get_db_connection()
@@ -397,7 +232,6 @@ def mark_arrived(vid):
         if not r:
             return jsonify({"error":"not found"}), 404
 
-        # Si start et end EXACTEMENT égaux: considérer arrivé
         if (r['start_lat'] == r['end_lat']) and (r['start_lng'] == r['end_lng']):
             arrived = True
             reason = "start_equals_end"
@@ -406,29 +240,27 @@ def mark_arrived(vid):
             arrived = dist <= ARRIVAL_THRESHOLD_M
             reason = f"distance={dist:.1f}m threshold={ARRIVAL_THRESHOLD_M}m"
         else:
-            # pas de coords fournies -> on marque arrived si start==end, sinon erreur
             arrived = False
             reason = "no_coords_provided_and_start_not_equal_end"
 
         if not arrived:
             return jsonify({"arrived": False, "reason": reason}), 200
 
-        # Mettre à jour le voyage
         now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-        cur2 = conn.cursor()
-        cur2.execute("UPDATE voyage SET status = %s, arrived_at = %s WHERE id = %s", ('arrived', now, vid))
+        cur.execute("UPDATE voyage SET status = %s, arrived_at = %s WHERE id = %s", ('arrived', now, vid))
         conn.commit()
-        return jsonify({"arrived": True, "reason": reason, "updated_rows": cur2.rowcount}), 200
+        return jsonify({"arrived": True, "reason": reason, "updated_rows": cur.rowcount}), 200
 
-    except Error as e:
+    except mysql.connector.Error as e:
         print("DB error:", e)
         abort(500, str(e))
     finally:
         if 'cur' in locals(): cur.close()
-        if 'cur2' in locals(): cur2.close()
         if 'conn' in locals() and conn.is_connected(): conn.close()
 
-# Simple route pour health check
+# ----------------------
+# Health check
+# ----------------------
 @app.route('/', methods=['GET'])
 def hello():
     return jsonify({"msg":"voyage API running"}), 200
@@ -438,26 +270,6 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
