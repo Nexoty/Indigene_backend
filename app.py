@@ -5,6 +5,9 @@ import json
 import math
 from datetime import datetime
 import os
+import cloudinary
+import cloudinary.uploader
+
 
 app = Flask(__name__)
 CORS(app)
@@ -266,21 +269,19 @@ def mark_arrived(vid):
 # Route pour récupérer un profil par ID
 @app.route('/api/profile/<int:id>', methods=['GET'])
 def get_profile(id):
-    conn = None
-    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM profile WHERE id = %s", (id,))
-        profil = cursor.fetchone()
-        if not profil:
+        profile = cursor.fetchone()
+        if not profile:
             return jsonify({"success": False, "message": "Profil non trouvé"}), 404
-        return jsonify({"success": True, "data": profil})
+        return jsonify({"success": True, "data": profile})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+        cursor.close() if cursor else None
+        conn.close() if conn else None
 
 @app.route('/api/profile', methods=['POST'])
 def create_profile():
@@ -329,6 +330,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
