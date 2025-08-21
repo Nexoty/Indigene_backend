@@ -15,7 +15,7 @@ CORS(app)
 cloudinary.config(
     cloud_name='dg5fzqmtg',
     api_key='511658453183448',
-    api_secret='**********'
+    api_secret='-wRVxd1qbX0-4HvNOmQmXcdbxqg'
 )
 # Fonction pour créer une connexion MySQL
 def get_db_connection():
@@ -330,6 +330,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
