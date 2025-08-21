@@ -211,7 +211,9 @@ def create_voyage():
         end_address = data.get('end')
         title = data.get('title')
         participants = data.get('participants', [])  # tableau
-        if not end_address or not title:
+        organisateur_phone = data.get('organisateur_phone')  # numéro de l'organisateur
+
+        if not end_address or not title or not organisateur_phone:
             return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
 
         # Générer un lien unique pour le voyage
@@ -221,15 +223,14 @@ def create_voyage():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Insérer le voyage avec les participants stockés en JSON
-        sql = """
-        INSERT INTO voyage (title, participant, end_address, link, created_at)
-        VALUES (%s, %s, %s, %s, %s)
-        """
-        # Convertir le tableau en chaîne JSON
+        # Insérer le voyage avec participants et organisateur
         import json
         participant_json = json.dumps(participants)
-        values = (title, participant_json, end_address, link, datetime.utcnow())
+        sql = """
+        INSERT INTO voyage (title, participant, end_address, link, created_at, organisateur_phone)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        values = (title, participant_json, end_address, link, datetime.utcnow(), organisateur_phone)
         cursor.execute(sql, values)
         conn.commit()
 
@@ -248,6 +249,7 @@ def create_voyage():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
 
 # ----------------------
 # Récupérer les utilisateurs inscrits pour un voyage
@@ -492,6 +494,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
