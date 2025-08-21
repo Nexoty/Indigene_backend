@@ -299,11 +299,146 @@ def effacer_alerte():
         if cursor: cursor.close()
         if conn: conn.close()
 
+# Utilitaire : distance haversine (mètres)
+def haversine_meters(lat1, lon1, lat2, lon2):
+    R = 6371000  # rayon Terre en m
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2.0)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2.0)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
+
+# -------- Routes --------
+
+# GET /voyages => liste de voyages (optionnel: status filter)
+@app.route('/voyages', methods=['GET'])
+def list_voyages():
+    status = request.args.get('status')  # ex: ?status=in_progress
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+        sql = "SELECT id, user_id, title, start_lat, start_lng, end_lat, end_lng, path, color, avatar_url, status, started_at, arrived_at FROM voyage"
+        if status:
+            sql += " WHERE status = %s"
+            cur.execute(sql, (status,))
+        else:
+            cur.execute(sql)
+        rows = cur.fetchall()
+        # parse json field path
+        for r in rows:
+            if r.get('path') is None:
+                r['path'] = []
+            else:
+                try:
+                    # MySQL may return dict for JSON column or string
+                    if isinstance(r['path'], (bytes, bytearray)):
+                        r['path'] = json.loads(r['path'].decode('utf-8'))
+                    elif isinstance(r['path'], str):
+                        r['path'] = json.loads(r['path'])
+                except Exception:
+                    # fallback leave as-is
+                    pass
+        return jsonify(rows)
+    except Error as e:
+        print("DB error:", e)
+        abort(500, str(e))
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals() and conn.is_connected(): conn.close()
+
+# PUT /voyages/<id> => update fields (start/end/path/status)
+@app.route('/voyages/<int:vid>', methods=['PUT'])
+def update_voyage(vid):
+    data = request.get_json(force=True)
+    allowed = {'start_lat','start_lng','end_lat','end_lng','path','color','avatar_url','status','title'}
+    fields = []
+    values = []
+    for k,v in data.items():
+        if k in allowed:
+            if k == 'path':
+                values.append(json.dumps(v))
+            else:
+                values.append(v)
+            fields.append(f"{k} = %s")
+    if not fields:
+        return jsonify({"error":"no valid fields to update"}), 400
+    values.append(vid)
+    sql = f"UPDATE voyage SET {', '.join(fields)} WHERE id = %s"
+    try:
+         conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(sql, tuple(values))
+        conn.commit()
+        return jsonify({"ok": True, "updated": cur.rowcount})
+    except Error as e:
+        print("DB error:", e)
+        abort(500, str(e))
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals() and conn.is_connected(): conn.close()
+
+# POST /voyages/<id>/arrived
+# On peut appeler avec body { "lat": .., "lng": .. } (optionnel) ou le backend vérifiera si start==end selon la demande
+@app.route('/voyages/<int:vid>/arrived', methods=['POST'])
+def mark_arrived(vid):
+    payload = request.get_json(silent=True) or {}
+    lat = payload.get('lat')   # position du client (optionnel)
+    lng = payload.get('lng')
+    # Seuil d'arrivée (mètres)
+    ARRIVAL_THRESHOLD_M = float(os.getenv('ARRIVAL_THRESHOLD_M', 20.0))  # 20 m par défaut
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT id, start_lat, start_lng, end_lat, end_lng, status FROM voyage WHERE id = %s", (vid,))
+        r = cur.fetchone()
+        if not r:
+            return jsonify({"error":"not found"}), 404
+
+        # Si start et end EXACTEMENT égaux: considérer arrivé
+        if (r['start_lat'] == r['end_lat']) and (r['start_lng'] == r['end_lng']):
+            arrived = True
+            reason = "start_equals_end"
+        elif lat is not None and lng is not None:
+            dist = haversine_meters(lat, lng, r['end_lat'], r['end_lng'])
+            arrived = dist <= ARRIVAL_THRESHOLD_M
+            reason = f"distance={dist:.1f}m threshold={ARRIVAL_THRESHOLD_M}m"
+        else:
+            # pas de coords fournies -> on marque arrived si start==end, sinon erreur
+            arrived = False
+            reason = "no_coords_provided_and_start_not_equal_end"
+
+        if not arrived:
+            return jsonify({"arrived": False, "reason": reason}), 200
+
+        # Mettre à jour le voyage
+        now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE voyage SET status = %s, arrived_at = %s WHERE id = %s", ('arrived', now, vid))
+        conn.commit()
+        return jsonify({"arrived": True, "reason": reason, "updated_rows": cur2.rowcount}), 200
+
+    except Error as e:
+        print("DB error:", e)
+        abort(500, str(e))
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'cur2' in locals(): cur2.close()
+        if 'conn' in locals() and conn.is_connected(): conn.close()
+
+# Simple route pour health check
+@app.route('/', methods=['GET'])
+def hello():
+    return jsonify({"msg":"voyage API running"}), 200
+
 # ----------------------
 # Lancer le serveur
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
