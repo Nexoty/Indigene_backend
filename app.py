@@ -258,6 +258,63 @@ def mark_arrived(vid):
         if 'cur' in locals(): cur.close()
         if 'conn' in locals() and conn.is_connected(): conn.close()
 
+# Route pour récupérer un profil par ID
+@app.route('/api/profile/<int:id>', methods=['GET'])
+def get_profile(id):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM profile WHERE id = %s", (id,))
+        profil = cursor.fetchone()
+        if not profil:
+            return jsonify({"success": False, "message": "Profil non trouvé"}), 404
+        return jsonify({"success": True, "data": profil})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+@app.route('/api/profile', methods=['POST'])
+def create_profile():
+    conn = None
+    cursor = None
+    try:
+        username = request.form.get('username')
+        phone = request.form.get('phone')
+        photo_file = request.files.get('photo')
+
+        if not username or not phone or not photo_file:
+            return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
+
+        # Enregistrer la photo
+        filename = secure_filename(photo_file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        photo_file.save(filepath)
+
+        # On peut enregistrer le chemin relatif dans la DB
+        photo_url = f"/{UPLOAD_FOLDER}/{filename}"
+
+        # Insertion dans la DB
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO profile (username, phone, photo) VALUES (%s, %s, %s)",
+            (username, phone, photo_url)
+        )
+        conn.commit()
+        profile_id = cursor.lastrowid
+
+        return jsonify({"success": True, "id": profile_id})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 # ----------------------
 # Health check
 # ----------------------
@@ -270,6 +327,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
