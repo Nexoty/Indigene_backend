@@ -384,6 +384,33 @@ def create_profile():
         if cursor: cursor.close()
         if conn: conn.close()
 
+@app.route('/api/profile/friend', methods=['GET'])
+def check_profile_friend():
+    phone = request.args.get('phone')
+    if not phone:
+        return jsonify({"success": False, "error": "Numéro requis"}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT id, username, phone, photo FROM profile WHERE phone = %s", (phone,))
+        profile = cursor.fetchone()
+
+        if profile:
+            return jsonify({"success": True, "data": profile})
+        else:
+            return jsonify({"success": True, "data": None})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
 @app.route('/api/login', methods=['POST'])
 def login():
     phone = request.json.get("phone")
@@ -450,6 +477,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
