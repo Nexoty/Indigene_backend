@@ -280,26 +280,67 @@ def get_voyage_users():
         if cursor: cursor.close()
         if conn: conn.close()
 
-# Route pour récupérer un profil par ID
-@app.route('/api/profile/', methods=['GET'])
-def get_profile():
-    try:
-        profile_id = request.args.get('id')
-        if not profile_id:
-            return jsonify({"success": False, "error": "ID du profil requis"}), 400
+@app.route('/api/friend/add', methods=['POST'])
+def add_friend():
+    data = request.get_json()
+    user_id = data.get('user_id')  # ID de l'utilisateur connecté
+    friend_phone = data.get('friend_phone')  # Numéro de téléphone de l'ami
 
+    if not user_id or not friend_phone:
+        return jsonify({"success": False, "error": "Champs requis"}), 400
+
+    conn = None
+    cursor = None
+    try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM profile WHERE id = %s", (profile_id,))
-        profile = cursor.fetchone()
-        if not profile:
-            return jsonify({"success": False, "message": "Profil non trouvé"}), 404
-        return jsonify({"success": True, "data": profile})
+
+        # Vérifier que le profil de l'ami existe
+        cursor.execute("SELECT id FROM profile WHERE phone = %s", (friend_phone,))
+        friend = cursor.fetchone()
+        if not friend:
+            return jsonify({"success": False, "error": "Profil ami non trouvé"}), 404
+
+        friend_id = friend['id']
+
+        # Ajouter l'ami
+        cursor.execute(
+            "INSERT IGNORE INTO profile_friends (user_id, friend_id) VALUES (%s, %s)",
+            (user_id, friend_id)
+        )
+        conn.commit()
+
+        return jsonify({"success": True, "message": "Ami ajouté"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+@app.route('/api/friends/<int:user_id>', methods=['GET'])
+def get_friends(user_id):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT p.id, p.username, p.phone, p.photo
+        FROM profile p
+        INNER JOIN profile_friends pf ON pf.friend_id = p.id
+        WHERE pf.user_id = %s
+        """
+        cursor.execute(sql, (user_id,))
+        friends = cursor.fetchall() or []
+
+        return jsonify({"success": True, "friends": friends})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 
 @app.route('/api/profile', methods=['POST'])
 def create_profile():
@@ -313,13 +354,20 @@ def create_profile():
         if not username or not phone or not photo_file:
             return jsonify({"success": False, "error": "Tous les champs sont requis"}), 400
 
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Vérifier si le profil existe déjà
+        cursor.execute("SELECT * FROM profile WHERE phone = %s", (phone,))
+        existing_profile = cursor.fetchone()
+        if existing_profile:
+            return jsonify({"success": False, "error": "Ce numéro existe déjà", "profile": existing_profile}), 400
+
         # Upload sur Cloudinary
         result = cloudinary.uploader.upload(photo_file)
         photo_url = result['secure_url']
 
         # Insertion en DB
-        conn = get_db_connection()
-        cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO profile (username, phone, photo) VALUES (%s, %s, %s)",
             (username, phone, photo_url)
@@ -327,7 +375,7 @@ def create_profile():
         conn.commit()
         profile_id = cursor.lastrowid
 
-        return jsonify({"success": True, "id": profile_id, "photo": photo_url})
+        return jsonify({"success": True, "id": profile_id, "photo": photo_url, "username": username, "phone": phone})
 
     except Exception as e:
         print("Erreur backend:", e)
@@ -335,6 +383,60 @@ def create_profile():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    phone = request.json.get("phone")
+    if not phone:
+        return jsonify({"success": False, "error": "Numéro requis"}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM profile WHERE phone = %s", (phone,))
+        user = cursor.fetchone()
+
+        if not user:
+            return jsonify({"success": False, "error": "Utilisateur non trouvé"}), 404
+
+        # Enregistrer l'utilisateur dans la session
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['phone'] = user['phone']
+        session['photo'] = user['photo']
+
+        return jsonify({"success": True, "user": user})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+    
+@app.route('/api/me', methods=['GET'])
+def me():
+    if 'user_id' not in session:
+        return jsonify({"success": False, "error": "Non connecté"}), 401
+
+    return jsonify({
+        "success": True,
+        "user": {
+            "id": session['user_id'],
+            "username": session['username'],
+            "phone": session['phone'],
+            "photo": session['photo']
+        }
+    })
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"success": True, "message": "Déconnecté"})
+
+
+
 
 # ----------------------
 # Health check
@@ -348,6 +450,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
