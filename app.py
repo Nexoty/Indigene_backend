@@ -252,36 +252,36 @@ def create_voyage():
 # ----------------------
 # Récupérer les utilisateurs inscrits pour un voyage
 # ----------------------
-@app.route('/voyages/users', methods=['GET'])
-def get_voyage_users():
+@app.route('/voyages', methods=['GET'])
+def get_user_voyages():
+    user_phone = request.args.get('phone')
+    if not user_phone:
+        return jsonify({"success": False, "error": "Numéro de téléphone requis"}), 400
+
     conn = None
     cursor = None
     try:
-        voyage_id = request.args.get('id')
-        if not voyage_id:
-            return jsonify({"success": False, "error": "ID du voyage requis"}), 400
-
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
+        # Récupérer voyages où le user.phone est dans le tableau participants
         sql = """
-        SELECT u.id, u.username, u.avatar_url
-        FROM profile u
-        INNER JOIN voyage_users vu ON vu.user_id = u.id
-        WHERE vu.voyage_id = %s
+        SELECT v.id, v.title, v.end, v.color, v.participants
+        FROM voyage v
+        WHERE JSON_CONTAINS(v.participants, %s, '$')
         """
-        cursor.execute(sql, (voyage_id,))
-        users = cursor.fetchall() or []
+        # JSON_CONTAINS attend un JSON string, donc on passe le numéro de téléphone en string JSON
+        cursor.execute(sql, (f'"{user_phone}"',))
+        voyages = cursor.fetchall() or []
 
-        return jsonify({"success": True, "users": users})
-
+        return jsonify({"success": True, "voyages": voyages})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
 
-@app.route('/api/friend/add', methods=['POST'])
+@app.route('/add', methods=['POST'])
 def add_friend():
     data = request.get_json()
     user_id = data.get('user_id')  # ID de l'utilisateur connecté
@@ -492,6 +492,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
