@@ -91,6 +91,76 @@ def creer_alerte():
         if cursor: cursor.close()
         if conn: conn.close()
 
+@app.route('/alerte/vote', methods=['POST'])
+def vote_alerte():
+    conn = None
+    cursor = None
+    try:
+        data = request.json
+        alert_id = data.get('alerte_id')
+        user_id = data.get('user_id')
+        vote = data.get('vote', 'useful')  # 'useful' ou 'fake'
+
+        if not all([alert_id, user_id]):
+            return jsonify({"success": False, "error": "Champs manquants"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Récupérer alerte existante
+        cursor.execute("SELECT uids_confirms, id_utilisateur FROM alerte WHERE id=%s", (alert_id,))
+        alert = cursor.fetchone()
+        uids = json.loads(alert['uids_confirms'])
+
+        # Vérifier si l'utilisateur a déjà voté
+        if user_id not in uids and vote == "useful":
+            uids.append(user_id)
+            confirmation = len(uids)
+            cursor.execute("UPDATE alerte SET confirmation=%s, uids_confirms=%s WHERE id=%s",
+                           (confirmation, json.dumps(uids), alert_id))
+            conn.commit()
+
+            # + points si au moins 2 confirmations
+            if confirmation >= 2:
+                cursor.execute("UPDATE users SET points = points + 2 WHERE id=%s", (alert['id_utilisateur'],))
+                conn.commit()
+
+        return jsonify({"success": True, "confirmations": len(uids)})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+@app.route('/leaderboard/weekly', methods=['GET'])
+def leaderboard_weekly():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Leaderboard par points sur la semaine
+    cursor.execute("""
+        SELECT u.id, u.username, u.points, COUNT(a.id) as alerts_count
+        FROM users u
+        LEFT JOIN alerte a ON a.id_utilisateur = u.id
+            AND a.created_at >= NOW() - INTERVAL 7 DAY
+        GROUP BY u.id
+        ORDER BY u.points DESC
+        LIMIT 10
+    """)
+    top = cursor.fetchall()
+
+    # Attribution badges
+    for t in top:
+        badges = []
+        if t['alerts_count'] >= 1: badges.append("Ti Machann Alert")
+        if t['alerts_count'] >= 5: badges.append("Gran Signalè")
+        if t['alerts_count'] >= 10: badges.append("Chodyè Difé 🔥")
+        t['badges'] = badges
+
+    return jsonify({"success": True, "top": top})
+
+
 
 # ----------------------
 # INSERT ADRESSE
@@ -511,6 +581,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
