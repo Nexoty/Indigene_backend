@@ -60,23 +60,28 @@ def creer_alerte():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
+        # Insertion alerte
         sql = """
-        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, image, adresse)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, uids_confirms, image, adresse)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         values = (
             data.get('uid'),
             data.get('type'),
             data.get('latitude'),
             data.get('longitude'),
-            data.get('confirmation', 0),
+            0,          # confirmation initiale
+            '[]',       # uids_confirms vide
             data.get('image'),
             data.get('adresse')
         )
-
         cursor.execute(sql, values)
         conn.commit()
         last_id = cursor.lastrowid
+
+        # Ajouter 1 point initial à l'utilisateur
+        cursor.execute("UPDATE users SET points = points + 1 WHERE id=%s", (data.get('uid'),))
+        conn.commit()
 
         return jsonify({"success": True, 'message': 'Alerte créée', 'id': last_id})
 
@@ -85,6 +90,7 @@ def creer_alerte():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
 
 # ----------------------
 # INSERT ADRESSE
@@ -505,6 +511,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
