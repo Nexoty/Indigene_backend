@@ -301,14 +301,74 @@ def creer_adresse():
 def get_notifications():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
     cursor.execute("SELECT * FROM notifications WHERE active = 1 ORDER BY created_at DESC")
     data = cursor.fetchall()
-
     cursor.close()
     conn.close()
-
     return jsonify({"success": True, "data": data})
+
+# ----------------------
+# CHECK VERSION APP
+# ----------------------
+@app.route('/notifications/check_version', methods=['POST'])
+def check_version():
+    data = request.json
+    version_app = data.get('version_app')
+    user_uuid = data.get('uuid') or str(uuid.uuid4())
+
+    if not version_app:
+        return jsonify({"success": False, "error": "version_app manquante"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Vérifier update
+    cursor.execute("""
+        SELECT * FROM notifications
+        WHERE type='update' AND active=1 AND version_app > %s
+        ORDER BY id DESC LIMIT 1
+    """, (version_app,))
+    notif = cursor.fetchone()
+
+    if notif:
+        cursor.execute("""
+            INSERT INTO clicks (notification_id, uuid, clicked)
+            VALUES (%s, %s, FALSE)
+            ON DUPLICATE KEY UPDATE clicked=clicked
+        """, (notif['id'], user_uuid))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "update_needed": True, "notification": notif, "uuid": user_uuid})
+    
+    cursor.close()
+    conn.close()
+    return jsonify({"success": True, "update_needed": False, "uuid": user_uuid})
+
+# ----------------------
+# CLICK NOTIFICATION
+# ----------------------
+@app.route('/notifications/click', methods=['POST'])
+def click_notification():
+    data = request.json
+    notif_id = data.get('notification_id')
+    user_uuid = data.get('uuid')
+    clicked = data.get('clicked', False)
+
+    if not all([notif_id, user_uuid]):
+        return jsonify({"success": False, "error": "Champs manquants"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO clicks (notification_id, uuid, clicked)
+        VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE clicked=%s
+    """, (notif_id, user_uuid, clicked, clicked))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({"success": True})
 
 # ----------------------
 # SELECT ALERTES FILTREES PAR UID
@@ -448,6 +508,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
