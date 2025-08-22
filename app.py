@@ -86,7 +86,7 @@ def creer_alerte():
             a_type,
             lat,
             lng,
-            0,          # confirmation initiale
+            1,          # confirmation initiale
             '[]',       # uids_confirms vide
             data.get('image'),
             data.get('adresse')
@@ -494,6 +494,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
