@@ -68,17 +68,17 @@ def creer_alerte():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Vérifier si alerte pour le même UID et position existe déjà
+        # Vérifier si alerte pour le même UID, type et position existe déjà
         cursor.execute("""
             SELECT id FROM alerte 
-            WHERE id_utilisateur=%s AND latitude=%s AND longitude=%s AND type=%s
+            WHERE uid=%s AND latitude=%s AND longitude=%s AND type=%s
         """, (uid, lat, lng, a_type))
         if cursor.fetchone():
             return jsonify({"success": False, "error": "Alerte déjà signalée à cet endroit"}), 409
 
         # Insertion alerte
         sql = """
-        INSERT INTO alerte (id_utilisateur, type, latitude, longitude, confirmation, uids_confirms, image, adresse)
+        INSERT INTO alerte (uid, type, latitude, longitude, confirmation, uids_confirms, image, adresse)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         values = (
@@ -104,6 +104,9 @@ def creer_alerte():
         if conn: conn.close()
 
 
+# ----------------------
+# VOTE ALERTE
+# ----------------------
 @app.route('/alerte/vote', methods=['POST'])
 def vote_alerte():
     conn = None
@@ -151,6 +154,9 @@ def vote_alerte():
         if conn: conn.close()
 
 
+# ----------------------
+# LEADERBOARD
+# ----------------------
 @app.route('/leaderboard/weekly', methods=['GET'])
 def leaderboard_weekly():
     conn = None
@@ -161,11 +167,11 @@ def leaderboard_weekly():
 
         # Récupérer top UID par nombre d'alertes confirmées cette semaine
         cursor.execute("""
-            SELECT id_utilisateur as uid, COUNT(*) as alerts_count
+            SELECT uid, COUNT(*) as alerts_count
             FROM alerte
             WHERE created_at >= NOW() - INTERVAL 7 DAY
               AND confirmation >= 1
-            GROUP BY id_utilisateur
+            GROUP BY uid
             ORDER BY alerts_count DESC
             LIMIT 10
         """)
@@ -186,6 +192,7 @@ def leaderboard_weekly():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
 
 # ----------------------
 # INSERT ADRESSE
@@ -387,6 +394,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
