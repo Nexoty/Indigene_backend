@@ -133,23 +133,20 @@ def creer_adresse():
         if conn: conn.close()
 
 # ----------------------
-# SELECT APP UPDATE
+# SELECT NOTIFICATIONS
 # ----------------------
-@app.route('/sysapp', methods=['GET'])
-def app_systeme():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM updates WHERE active = %s", (1,))
-        resultats_app = cursor.fetchall()
-        return jsonify({"success": True, "data": resultats_app})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+@app.route('/notifications', methods=['GET'])
+def get_notifications():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT * FROM notifications WHERE active = 1 ORDER BY created_at DESC")
+    data = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": data})
 
 # ----------------------
 # SELECT ALERTES FILTREES PAR UID
@@ -508,6 +505,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
