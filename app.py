@@ -205,17 +205,30 @@ def mise_a_jour_alerte():
     try:
         data = request.json
         alerte_id = data.get('id')
-        confirmation = data.get('confirmation')  # true = +1, false = -1
+        uid = data.get('uid')
+        confirmation = data.get('confirmation')  # True = +1, False = -1
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
+        # Vérifier si uid est déjà dans la liste
+        cursor.execute("SELECT uids_confirms, confirmation FROM alerte WHERE id = %s", (alerte_id,))
+        alerte = cursor.fetchone()
+        if not alerte:
+            return jsonify({"success": False, "message": "Alerte introuvable"})
+
+        uids_confirms = alerte["uids_confirms"] or "[]"
+        import json
+        uids_confirms = json.loads(uids_confirms)
+
+        if uid in uids_confirms:
+            return jsonify({"success": False, "message": "Vous avez déjà confirmé ou infirmé cette alerte."})
+
+        # Mettre à jour la confirmation
         if confirmation:  
-            # Incrémenter
             sql = "UPDATE alerte SET confirmation = confirmation + 1 WHERE id = %s"
             cursor.execute(sql, (alerte_id,))
         else:  
-            # Décrémenter mais jamais en dessous de 0
             sql = """
                 UPDATE alerte 
                 SET confirmation = CASE 
@@ -225,7 +238,12 @@ def mise_a_jour_alerte():
                 WHERE id = %s
             """
             cursor.execute(sql, (alerte_id,))
-        
+
+        # Ajouter uid dans la liste
+        uids_confirms.append(uid)
+        sql_update_uids = "UPDATE alerte SET uids_confirms = %s WHERE id = %s"
+        cursor.execute(sql_update_uids, (json.dumps(uids_confirms), alerte_id))
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -234,6 +252,7 @@ def mise_a_jour_alerte():
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
 
 
 # ----------------------
@@ -489,6 +508,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
