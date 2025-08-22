@@ -308,44 +308,6 @@ def get_notifications():
     return jsonify({"success": True, "data": data})
 
 # ----------------------
-# CHECK VERSION APP
-# ----------------------
-@app.route('/notifications/check_version', methods=['POST'])
-def check_version():
-    data = request.json
-    version_app = data.get('version_app')
-    user_uuid = data.get('uuid') or str(uuid.uuid4())
-
-    if not version_app:
-        return jsonify({"success": False, "error": "version_app manquante"}), 400
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    # Vérifier update
-    cursor.execute("""
-        SELECT * FROM notifications
-        WHERE type='update' AND active=1 AND version_app > %s
-        ORDER BY id DESC LIMIT 1
-    """, (version_app,))
-    notif = cursor.fetchone()
-
-    if notif:
-        cursor.execute("""
-            INSERT INTO clicks (notification_id, uuid, clicked)
-            VALUES (%s, %s, FALSE)
-            ON DUPLICATE KEY UPDATE clicked=clicked
-        """, (notif['id'], user_uuid))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({"success": True, "update_needed": True, "notification": notif, "uuid": user_uuid})
-    
-    cursor.close()
-    conn.close()
-    return jsonify({"success": True, "update_needed": False, "uuid": user_uuid})
-
-# ----------------------
 # CLICK NOTIFICATION
 # ----------------------
 @app.route('/notifications/click', methods=['POST'])
@@ -508,6 +470,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
