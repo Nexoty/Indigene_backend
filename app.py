@@ -193,7 +193,9 @@ def leaderboard_weekly():
         if cursor: cursor.close()
         if conn: conn.close()
 
+# ----------------------
 # Ajouter un commentaire
+# ----------------------
 @app.route('/commentaire/ajouter', methods=['POST'])
 def ajouter_commentaire():
     data = request.json
@@ -202,8 +204,13 @@ def ajouter_commentaire():
     message = data.get('message')
     parent_id = data.get('parent_id')  # facultatif
 
-    if not all([alerte_id, uid, message]):
-        return jsonify({"success": False, "error": "Champs manquants"}), 400
+    # Vérification des champs obligatoires
+    if not alerte_id or not uid or not message:
+        return jsonify({"success": False, "error": "Champs manquants : alerte_id, uid ou message"}), 400
+
+    # Si parent_id vide ou invalide, mettre à None pour MySQL
+    if not parent_id:
+        parent_id = None
 
     conn = None
     cursor = None
@@ -222,6 +229,7 @@ def ajouter_commentaire():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
 
 
 # Récupérer commentaires pour une alerte
@@ -486,6 +494,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
