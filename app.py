@@ -301,11 +301,26 @@ def creer_adresse():
 def get_notifications():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM notifications WHERE active = 1 ORDER BY created_at DESC")
+    cursor.execute("""
+        SELECT 
+            id,
+            type,
+            title,
+            message,
+            version_app,
+            version_code,
+            url,
+            active,
+            created_at
+        FROM notifications 
+        WHERE active = 1 
+        ORDER BY created_at DESC
+    """)
     data = cursor.fetchall()
     cursor.close()
     conn.close()
     return jsonify({"success": True, "data": data})
+
 
 # ----------------------
 # CLICK NOTIFICATION
@@ -331,6 +346,7 @@ def click_notification():
     cursor.close()
     conn.close()
     return jsonify({"success": True})
+
 
 # ----------------------
 # SELECT ALERTES FILTREES PAR UID
@@ -470,6 +486,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
