@@ -57,8 +57,24 @@ def creer_alerte():
     cursor = None
     try:
         data = request.json
+        uid = data.get('uid')
+        lat = data.get('latitude')
+        lng = data.get('longitude')
+        a_type = data.get('type')
+
+        if not all([uid, lat, lng, a_type]):
+            return jsonify({"success": False, "error": "Champs manquants"}), 400
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+
+        # Vérifier si alerte pour le même UID et position existe déjà
+        cursor.execute("""
+            SELECT id FROM alerte 
+            WHERE id_utilisateur=%s AND latitude=%s AND longitude=%s AND type=%s
+        """, (uid, lat, lng, a_type))
+        if cursor.fetchone():
+            return jsonify({"success": False, "error": "Alerte déjà signalée à cet endroit"}), 409
 
         # Insertion alerte
         sql = """
@@ -66,10 +82,10 @@ def creer_alerte():
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         values = (
-            data.get('uid'),
-            data.get('type'),
-            data.get('latitude'),
-            data.get('longitude'),
+            uid,
+            a_type,
+            lat,
+            lng,
             0,          # confirmation initiale
             '[]',       # uids_confirms vide
             data.get('image'),
@@ -79,10 +95,6 @@ def creer_alerte():
         conn.commit()
         last_id = cursor.lastrowid
 
-        # Ajouter 1 point initial à l'utilisateur
-        cursor.execute("UPDATE users SET points = points + 1 WHERE id=%s", (data.get('uid'),))
-        conn.commit()
-
         return jsonify({"success": True, 'message': 'Alerte créée', 'id': last_id})
 
     except Exception as e:
@@ -90,6 +102,7 @@ def creer_alerte():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
 
 @app.route('/alerte/vote', methods=['POST'])
 def vote_alerte():
@@ -108,22 +121,26 @@ def vote_alerte():
         cursor = conn.cursor(dictionary=True)
 
         # Récupérer alerte existante
-        cursor.execute("SELECT uids_confirms, id_utilisateur FROM alerte WHERE id=%s", (alert_id,))
+        cursor.execute("SELECT uids_confirms, confirmation FROM alerte WHERE id=%s", (alert_id,))
         alert = cursor.fetchone()
-        uids = json.loads(alert['uids_confirms'])
+        if not alert:
+            return jsonify({"success": False, "error": "Alerte introuvable"}), 404
+
+        uids = json.loads(alert['uids_confirms'] or '[]')
 
         # Vérifier si l'utilisateur a déjà voté
-        if user_id not in uids and vote == "useful":
+        if user_id in uids:
+            return jsonify({"success": False, "error": "Vous avez déjà confirmé cette alerte."}), 400
+
+        # Si vote utile, ajouter user_id dans uids_confirms
+        if vote == "useful":
             uids.append(user_id)
             confirmation = len(uids)
-            cursor.execute("UPDATE alerte SET confirmation=%s, uids_confirms=%s WHERE id=%s",
-                           (confirmation, json.dumps(uids), alert_id))
+            cursor.execute(
+                "UPDATE alerte SET confirmation=%s, uids_confirms=%s WHERE id=%s",
+                (confirmation, json.dumps(uids), alert_id)
+            )
             conn.commit()
-
-            # + points si au moins 2 confirmations
-            if confirmation >= 2:
-                cursor.execute("UPDATE users SET points = points + 2 WHERE id=%s", (alert['id_utilisateur'],))
-                conn.commit()
 
         return jsonify({"success": True, "confirmations": len(uids)})
 
@@ -133,34 +150,42 @@ def vote_alerte():
         if cursor: cursor.close()
         if conn: conn.close()
 
+
 @app.route('/leaderboard/weekly', methods=['GET'])
 def leaderboard_weekly():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
 
-    # Leaderboard par points sur la semaine
-    cursor.execute("""
-        SELECT u.id, u.username, u.points, COUNT(a.id) as alerts_count
-        FROM users u
-        LEFT JOIN alerte a ON a.id_utilisateur = u.id
-            AND a.created_at >= NOW() - INTERVAL 7 DAY
-        GROUP BY u.id
-        ORDER BY u.points DESC
-        LIMIT 10
-    """)
-    top = cursor.fetchall()
+        # Récupérer top UID par nombre d'alertes confirmées cette semaine
+        cursor.execute("""
+            SELECT id_utilisateur as uid, COUNT(*) as alerts_count
+            FROM alerte
+            WHERE created_at >= NOW() - INTERVAL 7 DAY
+              AND confirmation >= 1
+            GROUP BY id_utilisateur
+            ORDER BY alerts_count DESC
+            LIMIT 10
+        """)
+        top = cursor.fetchall()
 
-    # Attribution badges
-    for t in top:
-        badges = []
-        if t['alerts_count'] >= 1: badges.append("Ti Machann Alert")
-        if t['alerts_count'] >= 5: badges.append("Gran Signalè")
-        if t['alerts_count'] >= 10: badges.append("Chodyè Difé 🔥")
-        t['badges'] = badges
+        # Attribution badges
+        for t in top:
+            badges = []
+            if t['alerts_count'] >= 1: badges.append("Ti Machann Alert")
+            if t['alerts_count'] >= 5: badges.append("Gran Signalè")
+            if t['alerts_count'] >= 10: badges.append("Chodyè Difé 🔥")
+            t['badges'] = badges
 
-    return jsonify({"success": True, "top": top})
+        return jsonify({"success": True, "top": top})
 
-
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 # ----------------------
 # INSERT ADRESSE
@@ -362,6 +387,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
