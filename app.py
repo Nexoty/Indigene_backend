@@ -193,6 +193,60 @@ def leaderboard_weekly():
         if cursor: cursor.close()
         if conn: conn.close()
 
+# Ajouter un commentaire
+@app.route('/commentaire/ajouter', methods=['POST'])
+def ajouter_commentaire():
+    data = request.json
+    alerte_id = data.get('alerte_id')
+    uid = data.get('uid')
+    message = data.get('message')
+    parent_id = data.get('parent_id')  # facultatif
+
+    if not all([alerte_id, uid, message]):
+        return jsonify({"success": False, "error": "Champs manquants"}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            INSERT INTO commentaire (alerte_id, uid, message, parent_id)
+            VALUES (%s, %s, %s, %s)
+        """, (alerte_id, uid, message, parent_id))
+        conn.commit()
+        last_id = cursor.lastrowid
+        return jsonify({"success": True, "id": last_id})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+# Récupérer commentaires pour une alerte
+@app.route('/commentaire/alerte/<int:alerte_id>', methods=['GET'])
+def recuperer_commentaires(alerte_id):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT id, uid, message, parent_id, created_at
+            FROM commentaire
+            WHERE alerte_id=%s
+            ORDER BY created_at ASC
+        """, (alerte_id,))
+        commentaires = cursor.fetchall()
+        return jsonify({"success": True, "commentaires": commentaires})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
 
 # ----------------------
 # INSERT ADRESSE
@@ -394,6 +448,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
