@@ -504,9 +504,8 @@ def recuperer_actualite():
 # RECUPERER LES INFORMATIONS D'ACTUALITES DE NEWS API
 #----------------------
 
-# --- Fonction pour récupérer les news ---
+# --- Récupérer et stocker les news ---
 def recuperer_news_api():
-    # API News
     API_KEY = "e71c06d3d8a74bc7be1cc7ffc0c43ebd"
     url = f"https://newsapi.org/v2/everything?q=Haïti&language=fr&apiKey={API_KEY}"
     response = requests.get(url)
@@ -520,14 +519,20 @@ def recuperer_news_api():
         title = article.get("title", "Pas de titre")
         description = article.get("description", "Pas de description")
         url_article = article.get("url", "")
-        image_url = article.get("urlToImage", "")  # On garde seulement l'URL
+        image_url = article.get("urlToImage", "")
 
-        # Insertion dans la table actualites
+        # Vérifier si l'article existe déjà
+        cursor.execute("SELECT id FROM actualites WHERE url = %s", (url_article,))
+        if cursor.fetchone():
+            print(f"Article '{title}' déjà présent en base, ignoré.")
+            continue
+
+        # Insertion si pas encore présent
         sql = """
         INSERT INTO actualites (titre, description, url, image_path)
         VALUES (%s, %s, %s, %s)
         """
-        values = (title, description, url_article, image_url)  # Stockage de l'URL
+        values = (title, description, url_article, image_url)
         try:
             cursor.execute(sql, values)
             conn.commit()
@@ -560,6 +565,7 @@ if __name__ == '__main__':
     
     # Lancer le serveur Flask
     app.run(debug=True)
+
 
 
 
