@@ -495,6 +495,9 @@ def recuperer_actualite():
         conn.close()
         return jsonify({"success":True,"actualite":actualite})
 
+    except Exception as e:
+        return jsonify({"success":False,"error":str(e)}),500
+
 # ----------------------
 # Health check
 # ----------------------
@@ -507,6 +510,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
