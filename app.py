@@ -541,6 +541,43 @@ def recuperer_news_api():
 
     cursor.close()
     conn.close()
+
+#--------------
+#CREATION DE PROFILE
+#--------------
+@app.route('/api/profile', methods=['POST'])
+def create_profile():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        phone = data.get('phone')
+
+        if not username or not phone:
+            return jsonify({"success": False, "error": "Champs manquants"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Vérifier si le téléphone existe déjà
+        cursor.execute("SELECT id FROM users WHERE phone = %s", (phone,))
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Numéro déjà utilisé"}), 409
+
+        # Insertion
+        sql = "INSERT INTO users (username, phone) VALUES (%s, %s)"
+        cursor.execute(sql, (username, phone))
+        conn.commit()
+        user_id = cursor.lastrowid
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "id": user_id, "username": username, "phone": phone})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
           
 # ----------------------
 # Health check
@@ -564,6 +601,7 @@ if __name__ == '__main__':
     
     # Lancer le serveur Flask
     app.run(debug=True)
+
 
 
 
