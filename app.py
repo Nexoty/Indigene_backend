@@ -8,6 +8,8 @@ import os
 import cloudinary
 import cloudinary.uploader
 import uuid
+import threading
+import time
 
 app = Flask(__name__)
 app.secret_key = os.getenv("ewewbdshdssdghsdywewewywew")
@@ -543,11 +545,23 @@ def recuperer_news_api():
 def hello():
     return jsonify({"msg":"voyage API running"}), 200
 
-# ----------------------
-# Lancer le serveur
-# ----------------------
+def run_scheduler():
+    while True:
+        try:
+            recuperer_news_api()  # Récupère et stocke les news
+        except Exception as e:
+            print("Erreur lors de la récupération automatique:", e)
+        time.sleep(3600)  # Pause 1 heure (3600 secondes)
+
 if __name__ == '__main__':
+    # Lancer le scheduler en arrière-plan
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+    
+    # Lancer le serveur Flask
     app.run(debug=True)
+
+
 
 
 
