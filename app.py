@@ -480,7 +480,20 @@ def recuperer_villes():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+#-----------------------
+#RECUPERER LES ACTUALITES
+#-----------------------
 
+@app.route('/actualite',methods=['GET'])
+def recuperer_actualite():
+    try:
+        conn=get_db_connection()
+        cursor =conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM actualites WHERE active=%s",(1,))
+        actualite =cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify({"success":True,"actualite":actualite})
 
 # ----------------------
 # Health check
@@ -494,6 +507,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
