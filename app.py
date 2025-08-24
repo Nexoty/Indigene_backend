@@ -498,6 +498,44 @@ def recuperer_actualite():
     except Exception as e:
         return jsonify({"success":False,"error":str(e)}),500
 
+#----------------------
+# RECUPERER LES INFORMATIONS D'ACTUALITES DE NEWS API
+#----------------------
+
+# --- Fonction pour récupérer les news ---
+def recuperer_news_api():
+    # API News
+    API_KEY = "e71c06d3d8a74bc7be1cc7ffc0c43ebd"
+    url = f"https://newsapi.org/v2/everything?q=Haïti&language=fr&apiKey={API_KEY}"
+    response = requests.get(url)
+    data = response.json()
+    articles = data.get("articles", [])
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    for article in articles[:5]:
+        title = article.get("title", "Pas de titre")
+        description = article.get("description", "Pas de description")
+        url_article = article.get("url", "")
+        image_url = article.get("urlToImage", "")  # On garde seulement l'URL
+
+        # Insertion dans la table actualites
+        sql = """
+        INSERT INTO actualites (titre, description, url, image_path)
+        VALUES (%s, %s, %s, %s)
+        """
+        values = (title, description, url_article, image_url)  # Stockage de l'URL
+        try:
+            cursor.execute(sql, values)
+            conn.commit()
+            print(f"Article '{title}' sauvegardé en base.")
+        except Exception as e:
+            print("Erreur lors de l'insertion en base:", e)
+
+    cursor.close()
+    conn.close()
+          
 # ----------------------
 # Health check
 # ----------------------
@@ -510,6 +548,7 @@ def hello():
 # ----------------------
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
