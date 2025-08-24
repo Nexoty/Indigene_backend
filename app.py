@@ -483,22 +483,21 @@ def recuperer_villes():
         return jsonify({"success": False, "error": str(e)}), 500
 
 #-----------------------
-#RECUPERER LES ACTUALITES
+# RECUPERER LES ACTUALITES
 #-----------------------
-
-@app.route('/actualite',methods=['GET'])
+@app.route('/actualite', methods=['GET'])
 def recuperer_actualite():
     try:
-        conn=get_db_connection()
-        cursor =conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM actualites WHERE active=%s",(1,))
-        actualite =cursor.fetchall()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM actualites WHERE active=%s", (1,))
+        actualite = cursor.fetchall()
         cursor.close()
         conn.close()
-        return jsonify({"success":True,"actualite":actualite})
-
+        return jsonify({"success": True, "actualite": actualite})
     except Exception as e:
-        return jsonify({"success":False,"error":str(e)}),500
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 #----------------------
 # RECUPERER LES INFORMATIONS D'ACTUALITES DE NEWS API
@@ -565,6 +564,7 @@ if __name__ == '__main__':
     
     # Lancer le serveur Flask
     app.run(debug=True)
+
 
 
 
